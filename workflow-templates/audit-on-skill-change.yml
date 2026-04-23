@@ -1,0 +1,47 @@
+name: Audit skills on change
+
+# DROP-IN TEMPLATE. Copy to .github/workflows/audit-on-skill-change.yml in any
+# repo that has a .claude/skills/ directory. Fires on push/PR that touches
+# skills; audits the repo's in-repo skills and writes findings to the shared
+# Agent Memory Notion DB.
+#
+# Requires repo secret: NOTION_API_KEY  (same Notion integration token used
+# by agent-memory; Cara's Keychain value mirrored into repo secrets).
+
+on:
+  push:
+    paths:
+      - ".claude/skills/**"
+  pull_request:
+    paths:
+      - ".claude/skills/**"
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # checkout in place — skills-auditor walks ~/ClaudeProjects/*/.claude/skills
+          # via its scanner, but in CI the repo is at $GITHUB_WORKSPACE. See the
+          # CLAUDE_PROJECTS_OVERRIDE env var below (set for CI path resolution).
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install skills-auditor
+        run: |
+          python -m pip install --upgrade pip
+          pip install "skills-auditor @ git+https://github.com/caraleiona/skills-auditor.git@main"
+
+      - name: Audit + commit findings
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          # Treat the checked-out repo as an additional project root. Without
+          # this, the scanner only walks ~/ClaudeProjects which doesn't exist
+          # on GH runners — the repo's .claude/skills/ would be invisible.
+          SKILLS_AUDITOR_EXTRA_PROJECTS: ${{ github.workspace }}
+        run: audit-skills --commit

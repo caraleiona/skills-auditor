@@ -1,0 +1,39 @@
+name: Weekly self-test
+
+# Runs every Sunday at 03:00 UTC (late Saturday evening PT). The skills-auditor
+# repo itself has no skills to audit — this workflow is a package-health smoke
+# test: pip install, import, run audit-skills against the checked-out tree,
+# which exercises all code paths without requiring Notion writes.
+#
+# True "catch drift on Cara's Mac" needs a local trigger (slash command or a
+# launchd plist) because GH-hosted runners can't see ~/.claude/skills/. This
+# workflow exists so regressions in the auditor itself surface weekly instead
+# of at the next time Cara happens to run /audit-skills.
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"   # Sunday 03:00 UTC
+  workflow_dispatch:       # allow manual runs
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install skills-auditor + agent-memory
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Import smoke test
+        run: python -c "import skills_auditor, agent_memory; print(skills_auditor.__version__, agent_memory.__version__)"
+
+      - name: Dry-run audit against checkout
+        # The runner only sees the skills-auditor repo itself (no in-repo skills).
+        # This exercises scan() + detectors without touching Notion.
+        run: audit-skills
