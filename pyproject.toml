@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skills-auditor"
+version = "0.1.0"
+description = "Periodic read-mostly auditor for skill drift across global, project, and plugin scopes. Writes findings into the agent-memory Notion layer."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Cara Wilson" }]
+license = { text = "Proprietary" }
+dependencies = [
+    "agent-memory>=0.1.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+audit-skills = "skills_auditor.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["skills_auditor*"]
+exclude = ["tests*"]
