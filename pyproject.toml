@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 authors = [{ name = "Cara Wilson" }]
 license = { text = "Proprietary" }
 dependencies = [
-    "agent-memory>=0.1.1",
+    "agent-memory @ git+https://github.com/caraleiona/agent-memory.git@v0.1.1",
 ]
 
 [project.optional-dependencies]
