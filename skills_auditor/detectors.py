@@ -8,6 +8,7 @@ All detectors are pure functions over the SkillFile list — no Notion calls her
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -16,6 +17,7 @@ from skills_auditor.models import Finding, SkillFile
 from skills_auditor.scanner import (
     DEFAULT_GLOBAL_ROOT,
     DEFAULT_PROJECTS_ROOT,
+    EXTRA_PROJECT_ENV,
 )
 
 logger = logging.getLogger("skills_auditor")
@@ -198,16 +200,40 @@ _REFERENCE_FILES_HINT = [
 ]
 
 
-def _collect_project_reference_files() -> list[Path]:
-    """All CLAUDE.md files under ~/ClaudeProjects plus the memory MEMORY.md."""
-    out: list[Path] = [p for p in _REFERENCE_FILES_HINT if p.is_file()]
-    if DEFAULT_PROJECTS_ROOT.exists():
-        for claude_md in DEFAULT_PROJECTS_ROOT.rglob("CLAUDE.md"):
-            # skip nested .venvs / node_modules etc
-            if any(part in {".venv", "node_modules", "__pycache__", ".git"} for part in claude_md.parts):
+_IGNORE_PARTS = {".venv", "node_modules", "__pycache__", ".git", ".github"}
+
+
+def _walk_project_refs(root: Path) -> list[Path]:
+    """Find CLAUDE.md + README.md under a single project root, skipping noise dirs."""
+    out: list[Path] = []
+    if not root.exists():
+        return out
+    for pattern in ("CLAUDE.md", "README.md"):
+        for hit in root.rglob(pattern):
+            if any(part in _IGNORE_PARTS for part in hit.parts):
                 continue
-            out.append(claude_md)
-    # Also scan the memory/ directory for linked files
+            out.append(hit)
+    return out
+
+
+def _collect_project_reference_files() -> list[Path]:
+    """CLAUDE.md + README.md under ~/ClaudeProjects + any SKILLS_AUDITOR_EXTRA_PROJECTS,
+    plus the user's MEMORY.md index + its linked *.md files.
+
+    The extra-projects branch matters in CI: on a GH runner ~/ClaudeProjects is
+    empty, so without this, the orphan detector emits false positives for any
+    in-repo skill whose only reference lives in the checked-out repo's CLAUDE.md.
+    """
+    out: list[Path] = [p for p in _REFERENCE_FILES_HINT if p.is_file()]
+    out += _walk_project_refs(DEFAULT_PROJECTS_ROOT)
+
+    extra = os.environ.get(EXTRA_PROJECT_ENV, "").strip()
+    if extra:
+        for raw in extra.split(":"):
+            p = Path(raw).expanduser().resolve()
+            if p.is_dir():
+                out += _walk_project_refs(p)
+
     mem_dir = Path.home() / ".claude" / "projects" / "-Users-carawilson-ClaudeProjects" / "memory"
     if mem_dir.is_dir():
         for md in mem_dir.glob("*.md"):
@@ -277,13 +303,9 @@ def detect_orphans(inventory: list[SkillFile]) -> list[Finding]:
     if not in_repo:
         return []
 
+    # READMEs are already included by _collect_project_reference_files via
+    # _walk_project_refs; no need to duplicate the walk here.
     ref_files = _collect_project_reference_files()
-    # Also scan project READMEs
-    if DEFAULT_PROJECTS_ROOT.exists():
-        for readme in DEFAULT_PROJECTS_ROOT.rglob("README.md"):
-            if any(part in {".venv", "node_modules", "__pycache__", ".git"} for part in readme.parts):
-                continue
-            ref_files.append(readme)
 
     ref_blob = ""
     for ref in ref_files:
