@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Weekly skills-auditor — catches drift on Cara's Mac that GH-hosted runners
+  can't see (~/.claude/skills/, ~/ClaudeProjects/*/.claude/skills/).
+
+  Fires Sunday 20:00 local. If the Mac is asleep at that exact moment, launchd
+  runs the job as soon as it wakes (StartCalendarInterval semantics).
+
+  Install:
+    cp ~/ClaudeProjects/skills-auditor/launchd/com.thehobbyist.skills-auditor.plist \
+       ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.thehobbyist.skills-auditor.plist
+
+  Smoke test immediately (don't wait until Sunday):
+    launchctl start com.thehobbyist.skills-auditor
+
+  Logs at ~/Library/Logs/skills-auditor/{out,err}.log — both rotate naturally.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.thehobbyist.skills-auditor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/carawilson/ClaudeProjects/agent-memory/.venv/bin/audit-skills</string>
+        <string>--commit</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>20</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/carawilson/Library/Logs/skills-auditor/out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/carawilson/Library/Logs/skills-auditor/err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>/Users/carawilson</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/carawilson</string>
+</dict>
+</plist>
