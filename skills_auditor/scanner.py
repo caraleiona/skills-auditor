@@ -13,6 +13,7 @@ record text body. No Notion calls happen in this module.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Iterable
@@ -25,6 +26,12 @@ HOME = Path.home()
 DEFAULT_GLOBAL_ROOT = HOME / ".claude" / "skills"
 DEFAULT_PLUGIN_ROOT = HOME / ".claude" / "plugins"
 DEFAULT_PROJECTS_ROOT = HOME / "ClaudeProjects"
+
+# CI override: colon-separated list of directories to treat as additional
+# project roots (i.e., each path is a repo whose `.claude/skills/` should be
+# scanned as scope='project'). Lets the per-push GH Action audit a single
+# checked-out repo without needing the full ClaudeProjects layout.
+EXTRA_PROJECT_ENV = "SKILLS_AUDITOR_EXTRA_PROJECTS"
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
 HEADER_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
@@ -101,30 +108,46 @@ def scan_global(root: Path = DEFAULT_GLOBAL_ROOT) -> list[SkillFile]:
     return skills
 
 
-def scan_projects(root: Path = DEFAULT_PROJECTS_ROOT) -> list[SkillFile]:
-    """Walk ~/ClaudeProjects/*/.claude/skills/ for both dir-style and standalone skills."""
-    skills: list[SkillFile] = []
-    if not root.exists():
-        return skills
-    for proj in sorted(root.iterdir()):
-        if not proj.is_dir() or proj.name.startswith("."):
-            continue
-        skills_dir = proj / ".claude" / "skills"
-        if not skills_dir.is_dir():
-            continue
-        for entry in sorted(skills_dir.iterdir()):
-            if entry.is_dir():
-                skill_md = entry / "SKILL.md"
-                if skill_md.is_file():
-                    sf = _skillfile_from_path(
-                        skill_md, scope="project", project=proj.name, name_override=entry.name
-                    )
-                    if sf:
-                        skills.append(sf)
-            elif entry.is_file() and entry.suffix == ".md":
-                sf = _skillfile_from_path(entry, scope="project", project=proj.name)
+def _scan_one_project(proj: Path) -> list[SkillFile]:
+    """Walk a single project directory's `.claude/skills/` subtree."""
+    out: list[SkillFile] = []
+    skills_dir = proj / ".claude" / "skills"
+    if not skills_dir.is_dir():
+        return out
+    for entry in sorted(skills_dir.iterdir()):
+        if entry.is_dir():
+            skill_md = entry / "SKILL.md"
+            if skill_md.is_file():
+                sf = _skillfile_from_path(
+                    skill_md, scope="project", project=proj.name, name_override=entry.name
+                )
                 if sf:
-                    skills.append(sf)
+                    out.append(sf)
+        elif entry.is_file() and entry.suffix == ".md":
+            sf = _skillfile_from_path(entry, scope="project", project=proj.name)
+            if sf:
+                out.append(sf)
+    return out
+
+
+def scan_projects(root: Path = DEFAULT_PROJECTS_ROOT) -> list[SkillFile]:
+    """Walk ~/ClaudeProjects/*/.claude/skills/ + any $SKILLS_AUDITOR_EXTRA_PROJECTS."""
+    skills: list[SkillFile] = []
+    if root.exists():
+        for proj in sorted(root.iterdir()):
+            if not proj.is_dir() or proj.name.startswith("."):
+                continue
+            skills += _scan_one_project(proj)
+
+    extra = os.environ.get(EXTRA_PROJECT_ENV, "").strip()
+    if extra:
+        for raw in extra.split(":"):
+            p = Path(raw).expanduser().resolve()
+            if not p.is_dir():
+                logger.warning("%s: skipping non-existent path %s", EXTRA_PROJECT_ENV, p)
+                continue
+            logger.info("scanner: extra project root = %s", p)
+            skills += _scan_one_project(p)
     return skills
 
 
