@@ -251,7 +251,20 @@ _SKILL_MENTION_RES = [
 
 
 def detect_stale_references(inventory: list[SkillFile]) -> list[Finding]:
-    """A skill name appears in CLAUDE.md / memory files but no skill at that path exists."""
+    """A skill name appears in CLAUDE.md / memory files but no skill at that path exists.
+
+    Skipped when the global skills root isn't on this host: without visibility
+    into `~/.claude/skills/`, any name referenced via a path-style pointer
+    looks "missing" even when it exists on the author's machine. This is the
+    CI case — false-positive avoidance trumps missing a real stale reference
+    that the next local/disk run will catch anyway.
+    """
+    if not DEFAULT_GLOBAL_ROOT.exists():
+        logger.info(
+            "detect_stale_references: global skills root %s not readable — skipping",
+            DEFAULT_GLOBAL_ROOT,
+        )
+        return []
     existing_names = {s.name for s in inventory}
     ref_files = _collect_project_reference_files()
 
