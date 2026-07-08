@@ -241,6 +241,20 @@ def _collect_project_reference_files() -> list[Path]:
     return out
 
 
+# Skills provided by Anthropic marketplace plugins at session time. They are
+# real and invokable in Claude Code / claude.ai sessions but leave no files
+# under ~/.claude/plugins/ (only marketplace metadata lives there), so the
+# disk scan can never see them. Docs saying e.g. "run the `pdf` skill" are
+# correct — don't flag them as stale. Trade-off: a genuinely missing skill
+# that shares one of these names will not flag. Extend as docs start
+# referencing other marketplace skills.
+KNOWN_EXTERNAL_SKILLS = {
+    "pdf",
+    "docx",
+    "pptx",
+    "xlsx",
+}
+
 # Heuristic patterns that suggest a reference to a skill by name
 # e.g. `~/.claude/skills/<name>/`, `/.claude/skills/<name>.md`, or backtick-wrapped `<name>` skill mention
 _SKILL_MENTION_RES = [
@@ -278,6 +292,8 @@ def detect_stale_references(inventory: list[SkillFile]) -> list[Finding]:
             for m in rx.finditer(text):
                 candidate = m.group(1)
                 if candidate in {"skills", "SKILL", "skill"}:
+                    continue
+                if candidate in KNOWN_EXTERNAL_SKILLS:
                     continue
                 mentioned.setdefault(candidate, []).append(ref)
 
