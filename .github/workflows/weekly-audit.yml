@@ -3,7 +3,9 @@ name: Weekly self-test
 # Runs every Sunday at 03:00 UTC (late Saturday evening PT). The skills-auditor
 # repo itself has no skills to audit — this workflow is a package-health smoke
 # test: pip install, import, run audit-skills against the checked-out tree,
-# which exercises scan() + detectors and writes findings to Notion.
+# which exercises scan() + detectors + a dry-run report. Since agent-memory
+# v0.2.0 (git-markdown backend) this needs no secrets: the dry-run reads an
+# empty memory dir on the runner and writes nothing.
 #
 # True "catch drift on Cara's Mac" needs a local trigger (slash command or a
 # launchd plist) because GH-hosted runners can't see ~/.claude/skills/. This
@@ -35,8 +37,5 @@ jobs:
 
       - name: Dry-run audit against checkout
         # The runner only sees the skills-auditor repo itself (no in-repo skills).
-        # audit-skills reads prior findings and writes new ones to Notion, so
-        # the secret must be exposed here — repo secrets are not auto-injected.
-        env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        # Dry-run: prints findings, writes nothing, needs no secrets.
         run: audit-skills
